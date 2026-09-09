@@ -22,16 +22,20 @@ class TelemetryData(BaseModel):
     temperature: float
 
 # --- MULTI-MODEL ENSEMBLE INITIALIZATION ---
+# Features: [Frequency (Hz), Temperature (°C)]
+# Labels: 0 = Awaiting, 1 = Adulterated/Impurities, 2 = Pure Milk, 3 = Apple Sample
 X_train = np.array([
-    [0, 25.0],
-    [50, 26.0],
-    [3500, 24.5],
-    [4000, 28.0],
-    [1500, 25.0],
-    [1800, 26.5],
-    [2200, 24.0]
+    [0, 25.0],       # 0: Inactive / No sensor
+    [50, 26.0],      # 0: Noise
+    [3500, 24.5],    # 1: High impurity / electrolyte spike
+    [4000, 28.0],    # 1: Adulterated sample
+    [1500, 25.0],    # 2: Pure milk baseline
+    [1800, 26.5],    # 2: Pure milk typical range
+    [2200, 24.0],    # 2: Pure milk safe range
+    [4800, 23.0],    # 3: Apple extract (High malic acid / sugars)
+    [5200, 25.0]     # 3: Apple juice signature
 ])
-y_train = np.array([0, 0, 1, 1, 2, 2, 2])
+y_train = np.array([0, 0, 1, 1, 2, 2, 2, 3, 3])
 
 rf_model = RandomForestClassifier(n_estimators=50, random_state=42)
 gb_model = GradientBoostingClassifier(n_estimators=50, random_state=42)
@@ -85,6 +89,7 @@ async def ingest_data(data: TelemetryData):
     probabilities = ensemble_model.predict_proba(input_features)[0]
     confidence = float(max(probabilities) * 100)
 
+    # Classification routing
     if median_freq < 100 or prediction_class == 0:
         verdict = "AWAITING SENSOR DATA"
         status_color = "#334155"
@@ -92,14 +97,18 @@ async def ingest_data(data: TelemetryData):
         confidence = 0.0
     elif prediction_class == 1:
         verdict = "High Impurity / Adulterated"
-        status_color = "#ef4444"
+        status_color = "#ef4444" # Red
         safety_score = 35
+    elif prediction_class == 3:
+        verdict = "Apple Sample Confirmed"
+        status_color = "#3b82f6" # Blue for fruit detection
+        safety_score = 95        # Apple is safe to drink
     else:
         verdict = "Pure Milk / Safe"
-        status_color = "#10b981"
+        status_color = "#10b981" # Green
         safety_score = 96
 
-    # Structured payload matching frontend expectations
+    # Structured payload matching advanced React frontend expectations
     latest_payload = {
         "hero": {
             "adulteration_type": verdict,
@@ -108,12 +117,12 @@ async def ingest_data(data: TelemetryData):
         },
         "primary": {
             "1_safety_score": safety_score,
-            "11_kitchen_directive": "Boil thoroughly before consumption." if safety_score < 80 else "Sample is fresh and safe for domestic use.",
+            "11_kitchen_directive": "Boil thoroughly." if safety_score < 80 else "Sample is fresh and safe for domestic use.",
             "12_countertop_timer_hrs": "6 Hours",
             "13_fridge_timer_hrs": "48 Hours",
-            "16_water_adulteration_pct": 0 if prediction_class == 2 else 25,
+            "16_water_adulteration_pct": 0 if prediction_class in [2, 3] else 25,
             "19_fraud_loss_penalty_inr": 12 if prediction_class == 1 else 0,
-            "21_REAL_TIME_PH_METER": 6.7
+            "21_REAL_TIME_PH_METER": 4.5 if prediction_class == 3 else 6.7
         },
         "secondary": {
             "eis_dsp_telemetry": {
@@ -128,14 +137,14 @@ async def ingest_data(data: TelemetryData):
                 "Dielectric_Constant": "78.4"
             },
             "dairy_rheology_economics": {
-                "Estimated_Fat_Pct": "3.5%",
+                "Estimated_Fat_Pct": "0.0%" if prediction_class == 3 else "3.5%",
                 "SNF_Content": "8.5%"
             },
             "ai_and_regulatory_metrology": {
                 "35_Class_Probability_Distribution": str({
-                    "Pure_Milk": round(probabilities[2] * 100, 1),
-                    "Water_Dilution": round(probabilities[1] * 100, 1),
-                    "Urea_Admixture": 2.0,
+                    "Pure_Milk": round(probabilities[2] * 100, 1) if len(probabilities) > 2 else 0,
+                    "Water_Dilution": round(probabilities[1] * 100, 1) if len(probabilities) > 1 else 0,
+                    "Apple_Extract": round(probabilities[3] * 100, 1) if len(probabilities) > 3 else 0,
                     "Detergent": 1.0
                 })
             }
@@ -150,7 +159,7 @@ async def ingest_data(data: TelemetryData):
     }
 
     await manager.broadcast(latest_payload)
-    return {"status": "success", "median_freq": median_freq}
+    return {"status": "success", "median_freq": median_freq, "class": int(prediction_class)}
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
