@@ -21,21 +21,21 @@ class TelemetryData(BaseModel):
     adc: float
     temperature: float
 
-# --- MULTI-MODEL ENSEMBLE INITIALIZATION ---
+# --- MULTI-MODEL ENSEMBLE TRAINED ON YOUR REAL HARDWARE DATA ---
 # Features: [Frequency (Hz), Temperature (°C)]
-# Labels: 0 = Awaiting, 1 = Adulterated/Impurities, 2 = Pure Milk, 3 = Apple Sample
+# Labels: 0 = Awaiting, 1 = Water Adulterated, 2 = Pure Milk, 3 = Apple Sample
 X_train = np.array([
     [0, 25.0],       # 0: Inactive / No sensor
-    [50, 26.0],      # 0: Noise
-    [3500, 24.5],    # 1: High impurity / electrolyte spike
-    [4000, 28.0],    # 1: Adulterated sample
-    [1500, 25.0],    # 2: Pure milk baseline
-    [1800, 26.5],    # 2: Pure milk typical range
-    [2200, 24.0],    # 2: Pure milk safe range
-    [4800, 23.0],    # 3: Apple extract (High malic acid / sugars)
-    [5200, 25.0]     # 3: Apple juice signature
+    [500, 25.0],     # 0: Noise / Air
+    [4095, 25.0],    # 1: Water Adulterated (From your log)
+    [4856, 25.0],    # 1: Water Adulterated (From your log)
+    [2109, 25.0],    # 2: Pure Milk (From your log)
+    [2357, 25.0],    # 2: Pure Milk (From your log)
+    [6519, 25.0],    # 3: Apple Extract (From your log)
+    [8936, 25.0],    # 3: Apple Extract (From your log)
+    [9249, 25.0]     # 3: Apple Peak (From your log)
 ])
-y_train = np.array([0, 0, 1, 1, 2, 2, 2, 3, 3])
+y_train = np.array([0, 0, 1, 1, 2, 2, 3, 3, 3])
 
 rf_model = RandomForestClassifier(n_estimators=50, random_state=42)
 gb_model = GradientBoostingClassifier(n_estimators=50, random_state=42)
@@ -89,26 +89,25 @@ async def ingest_data(data: TelemetryData):
     probabilities = ensemble_model.predict_proba(input_features)[0]
     confidence = float(max(probabilities) * 100)
 
-    # Classification routing
-    if median_freq < 100 or prediction_class == 0:
+    # Classification routing based on your real data
+    if median_freq < 500 or prediction_class == 0:
         verdict = "AWAITING SENSOR DATA"
         status_color = "#334155"
         safety_score = 0
         confidence = 0.0
     elif prediction_class == 1:
-        verdict = "High Impurity / Adulterated"
+        verdict = "Water Dilution / Adulterated"
         status_color = "#ef4444" # Red
         safety_score = 35
     elif prediction_class == 3:
         verdict = "Apple Sample Confirmed"
-        status_color = "#3b82f6" # Blue for fruit detection
-        safety_score = 95        # Apple is safe to drink
+        status_color = "#3b82f6" # Blue
+        safety_score = 95        
     else:
         verdict = "Pure Milk / Safe"
         status_color = "#10b981" # Green
         safety_score = 96
 
-    # Structured payload matching advanced React frontend expectations
     latest_payload = {
         "hero": {
             "adulteration_type": verdict,
@@ -120,7 +119,7 @@ async def ingest_data(data: TelemetryData):
             "11_kitchen_directive": "Boil thoroughly." if safety_score < 80 else "Sample is fresh and safe for domestic use.",
             "12_countertop_timer_hrs": "6 Hours",
             "13_fridge_timer_hrs": "48 Hours",
-            "16_water_adulteration_pct": 0 if prediction_class in [2, 3] else 25,
+            "16_water_adulteration_pct": 25 if prediction_class == 1 else 0,
             "19_fraud_loss_penalty_inr": 12 if prediction_class == 1 else 0,
             "21_REAL_TIME_PH_METER": 4.5 if prediction_class == 3 else 6.7
         },
