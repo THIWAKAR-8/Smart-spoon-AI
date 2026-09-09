@@ -21,21 +21,20 @@ class TelemetryData(BaseModel):
     adc: float
     temperature: float
 
-# --- MULTI-MODEL ENSEMBLE TRAINED ON YOUR REAL HARDWARE DATA ---
+# --- MULTI-MODEL ENSEMBLE TRAINED ON YOUR EXACT CALIBRATION DATA ---
 # Features: [Frequency (Hz), Temperature (°C)]
 # Labels: 0 = Awaiting, 1 = Water Adulterated, 2 = Pure Milk, 3 = Apple Sample
 X_train = np.array([
     [0, 25.0],       # 0: Inactive / No sensor
     [500, 25.0],     # 0: Noise / Air
-    [4095, 25.0],    # 1: Water Adulterated (From your log)
-    [4856, 25.0],    # 1: Water Adulterated (From your log)
-    [2109, 25.0],    # 2: Pure Milk (From your log)
-    [2357, 25.0],    # 2: Pure Milk (From your log)
-    [6519, 25.0],    # 3: Apple Extract (From your log)
-    [8936, 25.0],    # 3: Apple Extract (From your log)
-    [9249, 25.0]     # 3: Apple Peak (From your log)
+    [1950, 25.0],    # 1: Water Adulterated (New Log)
+    [2050, 25.0],    # 1: Water Adulterated (New Log)
+    [2300, 25.0],    # 2: Pure Milk
+    [2450, 25.0],    # 2: Pure Milk
+    [7500, 25.0],    # 3: Apple Extract (New Log)
+    [8431, 25.0]     # 3: Apple Peak (New Log)
 ])
-y_train = np.array([0, 0, 1, 1, 2, 2, 3, 3, 3])
+y_train = np.array([0, 0, 1, 1, 2, 2, 3, 3])
 
 rf_model = RandomForestClassifier(n_estimators=50, random_state=42)
 gb_model = GradientBoostingClassifier(n_estimators=50, random_state=42)
