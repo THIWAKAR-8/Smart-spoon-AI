@@ -21,7 +21,7 @@ from sklearn.preprocessing import StandardScaler
 app = FastAPI(
     title="Smart Spoon AI - Biosensor Telemetry Engine",
     description="Dual-Model Soft Voting Ensemble for Real-time Food Adulteration Analysis",
-    version="2.5.0",
+    version="2.6.0",
 )
 
 app.add_middleware(
@@ -41,15 +41,15 @@ class TelemetryData(BaseModel):
 
 
 # ============================================================================
-# MULTI-MODEL ENSEMBLE TRAINING (CALIBRATED TO YOUR SENSORS)
+# MULTI-MODEL ENSEMBLE TRAINING (CALIBRATED TO EXACT HARDWARE MEANS)
 # ============================================================================
 def train_ensemble_pipeline():
     """
-    Generates synthetic clusters based on physical hardware calibration:
+    Generates synthetic clusters based on physical hardware statistical means:
       Class 0: Inactive / Dry Probe  (0 - 450 Hz)
-      Class 1: Water Dilution       (1850 - 2120 Hz)
-      Class 2: Pure Milk Baseline   (2220 - 2580 Hz)
-      Class 3: Apple / Acid Extract (6800 - 9500 Hz)
+      Class 1: Water Dilution       (~1250 - 1338 Hz)
+      Class 2: Pure Milk Baseline   (~1467 - 1522 Hz)
+      Class 3: Apple / Acid Extract (~7500 - 9000 Hz)
     """
     np.random.seed(42)
     n_samples_per_class = 60
@@ -59,17 +59,17 @@ def train_ensemble_pipeline():
     c0_temp = np.random.normal(loc=25.0, scale=1.5, size=n_samples_per_class)
     c0_y = np.zeros(n_samples_per_class)
 
-    # Class 1: Water Dilution (Calibrated ~1950 - 2050 Hz)
-    c1_freq = np.random.normal(loc=2000, scale=60, size=n_samples_per_class)
-    c1_temp = np.random.normal(loc=24.5, scale=1.8, size=n_samples_per_class)
+    # Class 1: Water Dilution (From log: Mean ~1280 Hz)
+    c1_freq = np.random.normal(loc=1280, scale=25, size=n_samples_per_class)
+    c1_temp = np.random.normal(loc=25.0, scale=1.0, size=n_samples_per_class)
     c1_y = np.ones(n_samples_per_class)
 
-    # Class 2: Pure Milk (Calibrated ~2300 - 2450 Hz)
-    c2_freq = np.random.normal(loc=2380, scale=70, size=n_samples_per_class)
-    c2_temp = np.random.normal(loc=25.0, scale=1.5, size=n_samples_per_class)
+    # Class 2: Pure Milk (From log: Mean ~1500 Hz)
+    c2_freq = np.random.normal(loc=1500, scale=25, size=n_samples_per_class)
+    c2_temp = np.random.normal(loc=25.0, scale=1.0, size=n_samples_per_class)
     c2_y = np.full(n_samples_per_class, 2)
 
-    # Class 3: Apple Extract / Malic Acid (Calibrated ~7500 - 9000 Hz)
+    # Class 3: Apple Extract / Malic Acid (Maintained from previous calibration)
     c3_freq = np.random.normal(loc=8200, scale=500, size=n_samples_per_class)
     c3_temp = np.random.normal(loc=23.8, scale=1.5, size=n_samples_per_class)
     c3_y = np.full(n_samples_per_class, 3)
@@ -86,7 +86,7 @@ def train_ensemble_pipeline():
     # Model A: Random Forest (Stabilizer against electrical spikes)
     rf = RandomForestClassifier(n_estimators=100, max_depth=6, random_state=42)
 
-    # Model B: Gradient Boosting (Precision boundary optimizer)
+    # Model B: Gradient Boosting (Precision boundary optimizer for the tight 1280 vs 1500 gap)
     gb = GradientBoostingClassifier(n_estimators=100, learning_rate=0.08, max_depth=3, random_state=42)
 
     # Combined Soft-Voting Ensemble wrapped in Feature Scaling
@@ -211,7 +211,9 @@ async def ingest_telemetry(data: TelemetryData):
         ph_level = 6.95
         ambient_life = "3 Hours"
         fridge_life = "24 Hours"
-        water_adulteration_pct = int(min(65, max(15, (2300 - median_freq) / 15)))
+        
+        # Recalibrated math: Pure milk is ~1500, Water is ~1280 (Delta is 220Hz)
+        water_adulteration_pct = int(min(95, max(10, (1500 - median_freq) / 2.2)))
         fraud_loss = 18.50
     elif predicted_class == 3:
         verdict = "Apple Sample Confirmed"
